@@ -44,6 +44,7 @@ def main() -> None:
     print(f"Allowed stores: {s.allowed_store_ids if s.allowed_store_ids else 'ALL'}")
     print(f"Exclude keywords: {sorted(s.exclude_keywords)}")
     print(f"Cache file: {s.posted_cache_file}")
+    print(f"Role ping enabled: {s.ping_role_on_post} | Role ID: {s.discord_role_id or 'none'}")
 
     stores = fetch_stores()
     posted = load_posted_ids(s.posted_cache_file)
@@ -89,11 +90,14 @@ def main() -> None:
         print("No new co-op deals found. Nothing posted.")
         return
 
+    role_id = s.discord_role_id if (s.ping_role_on_post and s.discord_role_id) else None
+
     post_deals(
         webhook_url=s.discord_webhook_url,
         username=s.discord_webhook_username,
         deals=selected,
         embed_color=s.embed_color,
+        role_id_to_ping=role_id,
     )
     print(f"🚀 Posted {len(selected)} deal(s) to Discord")
 
