@@ -41,11 +41,6 @@ Perfect for Discord servers that want **daily co-op game deals** without spam or
 
 ---
 
-## 🖼️ Preview
-
-![Discord Preview](docs/preview.png)
-
-
 ## ⚡ Quick Start
 
 ### 1️⃣ Create a Discord Webhook
