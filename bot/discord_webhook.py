@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -29,7 +29,6 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # Prefer game thumb, fall back to store icon
     if deal.thumb:
         embed["thumbnail"] = {"url": deal.thumb}
     elif deal.store_icon:
@@ -43,26 +42,41 @@ def post_embeds(
     username: str,
     content: str,
     embeds: List[Dict[str, Any]],
+    role_id_to_ping: Optional[str] = None,
     timeout: int = 20,
 ) -> None:
     """
     Discord: max 10 embeds per message.
+    If role_id_to_ping is set, we mention only that role.
     """
+    mention = f"<@&{role_id_to_ping}> " if role_id_to_ping else ""
     payload = {
-        "content": content,
+        "content": f"{mention}{content}",
         "username": username,
         "embeds": embeds[:10],
-        "allowed_mentions": {"parse": []},
+        # Only allow mentioning this role (prevents @everyone and other mentions)
+        "allowed_mentions": {
+            "parse": [],
+            "roles": [role_id_to_ping] if role_id_to_ping else [],
+        },
     }
+
     r = requests.post(webhook_url, json=payload, timeout=timeout)
     r.raise_for_status()
 
 
-def post_deals(webhook_url: str, username: str, deals: List[Deal], embed_color: int) -> None:
+def post_deals(
+    webhook_url: str,
+    username: str,
+    deals: List[Deal],
+    embed_color: int,
+    role_id_to_ping: Optional[str] = None,
+) -> None:
     embeds = [build_embed(d, embed_color) for d in deals]
     post_embeds(
         webhook_url=webhook_url,
         username=username,
         content="🎮 **Tonight’s Co-op Deals (Under $10)**",
         embeds=embeds,
+        role_id_to_ping=role_id_to_ping,
     )
