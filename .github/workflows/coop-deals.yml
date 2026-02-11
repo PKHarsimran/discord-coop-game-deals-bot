@@ -2,7 +2,7 @@ name: Co-op Deals Bot
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # every 6 hours (UTC)
+    - cron: "0 9 * * *"   # once per day at 09:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -39,11 +39,5 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_USERNAME: ${{ secrets.DISCORD_WEBHOOK_USERNAME }}
-          # Optional overrides (you can set these as repo variables later if you want):
-          # MAX_PRICE: "10"
-          # MAX_POSTS_PER_RUN: "10"
-          # ONLY_STEAM_REDEEMABLE: "true"
-          # ALLOWED_STORE_IDS: "1,7,8,11"
-          # EXCLUDE_KEYWORDS: "hentai,nsfw,sex,porn,simulator"
         run: |
           python -m bot.main
