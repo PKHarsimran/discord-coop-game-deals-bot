@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# Local env files
+.env
+
+# Runtime cache (we use Actions cache for this)
+data/posted_deals.json
