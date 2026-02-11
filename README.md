@@ -92,6 +92,21 @@ cron: "0 9 * * *"
 
 ---
 
+### 🔔 Optional Role Ping (Opt-in)
+
+If you want the bot to ping a Discord role when it posts new deals:
+
+- Add `DISCORD_ROLE_ID` as a GitHub Secret (role ID number)
+- Set `PING_ROLE_ON_POST=true`
+
+| Variable | Description | Default |
+|--------|------------|---------|
+| `PING_ROLE_ON_POST` | Enable role ping on post | `false` |
+| `DISCORD_ROLE_ID` | Role ID to mention (e.g., `123...`) | empty |
+
+> Tip: Enable Discord Developer Mode → right-click the role → **Copy ID**
+
+
 ## 🔐 Security
 
 - Webhook URL is never committed  
