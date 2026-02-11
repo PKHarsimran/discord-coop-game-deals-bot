@@ -1,4 +1,7 @@
 # Discord Co-op Game Deals Bot 🎮
+![GitHub Actions](https://github.com/PKHarsimran/discord-coop-game-deals-bot/actions/workflows/coop-deals.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![License](https://img.shields.io/github/license/PKHarsimran/discord-coop-game-deals-bot)
 
 A **Discord webhook bot** that automatically posts **co-op PC game deals under $10** from multiple stores (via **CheapShark**), **verifies co-op support using Steam categories**, and runs **daily** using **GitHub Actions** — no servers required.
 
