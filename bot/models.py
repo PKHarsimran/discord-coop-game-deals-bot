@@ -16,10 +16,16 @@ class Deal:
     store_icon: Optional[str]
     steam_app_id: Optional[str]
     thumb: Optional[str]
+    buy_url: Optional[str] = None
+    source_label: str = "CheapShark"
 
     @property
     def cheapshark_url(self) -> str:
         return f"https://www.cheapshark.com/redirect?dealID={self.deal_id}"
+
+    @property
+    def deal_url(self) -> str:
+        return self.buy_url or self.cheapshark_url
 
     @property
     def steam_url(self) -> Optional[str]:

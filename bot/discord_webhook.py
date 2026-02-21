@@ -10,12 +10,12 @@ from .models import Deal
 
 def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
     steam_url = deal.steam_url
-    main_url = steam_url or deal.cheapshark_url
+    main_url = steam_url or deal.deal_url
 
     price_line = f"**${deal.sale_price:.2f}** ~~${deal.normal_price:.2f}~~  (**-{deal.savings_pct:.0f}%**)"
     store_line = f"Store: **{deal.store_name}**"
 
-    links_value = f"[Buy deal]({deal.cheapshark_url})"
+    links_value = f"[Buy deal]({deal.deal_url})"
     if steam_url:
         links_value += f" • [Steam]({steam_url})"
 
@@ -25,7 +25,7 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
         "description": f"{price_line}\n{store_line}"[:4096],
         "color": embed_color,
         "fields": [{"name": "Links", "value": links_value, "inline": False}],
-        "footer": {"text": "Source: CheapShark • Filter: Co-op + <$10"},
+        "footer": {"text": f"Source: {deal.source_label} • Filter: Co-op + <$10"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
