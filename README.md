@@ -13,7 +13,7 @@ Perfect for Discord servers that want **daily co-op game deals** without spam or
 
 - 🔍 Finds PC game deals under a configurable price threshold  
 - 🤝 Verifies **co-op support** using Steam’s official categories  
-- 🛒 Supports **multiple stores** (Steam, Humble, Fanatical, GMG, etc.)  
+- 🛒 Supports **multiple sources + stores** (CheapShark catalog + Steam direct specials)  
 - 📬 Posts clean, rich **Discord embeds** via webhooks  
 - 🧠 Prevents reposts using a cached `posted_deals.json`  
 - ⏱️ Runs **automatically once per day** using GitHub Actions  
@@ -81,8 +81,12 @@ cron: "0 9 * * *"
 |--------|------------|---------|
 | `MAX_PRICE` | Maximum deal price | `10.00` |
 | `MAX_POSTS_PER_RUN` | Max deals per run | `10` |
-| `ONLY_STEAM_REDEEMABLE` | Steamworks-only deals | `true` |
-| `ALLOWED_STORE_IDS` | Limit to specific stores | all |
+| `ONLY_STEAM_REDEEMABLE` | Steamworks-only deals from CheapShark | `true` |
+| `INCLUDE_STEAM_DIRECT_SPECIALS` | Include Steam Store specials as extra source | `true` |
+| `ALLOWED_STORE_IDS` | Limit to specific store IDs (comma-separated) | all |
+| `ALLOWED_STORE_NAMES` | Limit to specific store names (comma-separated, case-insensitive) | all |
+| `EXCLUDED_STORE_IDS` | Exclude specific store IDs (comma-separated) | none |
+| `EXCLUDED_STORE_NAMES` | Exclude specific store names (comma-separated, case-insensitive) | none |
 | `EXCLUDE_KEYWORDS` | Filter out unwanted titles | `hentai, nsfw, sex, porn, simulator` |
 
 ---
@@ -101,6 +105,27 @@ If you want the bot to ping a Discord role when it posts new deals:
 
 > Tip: Enable Discord Developer Mode → right-click the role → **Copy ID**
 
+
+
+### 🏪 Add More Shops / Markets
+
+CheapShark already tracks many stores, so the bot can include more markets by widening your filters:
+
+- Leave `ALLOWED_STORE_IDS` and `ALLOWED_STORE_NAMES` empty to include **all available stores**
+- Use `ALLOWED_STORE_NAMES` for easy targeting (example: `Steam,Humble Store,Fanatical`)
+- Use `EXCLUDED_STORE_NAMES` to block stores you don't want
+
+You can mix allow + exclude rules. Example:
+
+```env
+ALLOWED_STORE_NAMES=Steam,Humble Store,Fanatical,GreenManGaming
+EXCLUDED_STORE_NAMES=IndieGala
+```
+
+The runtime logs now show:
+- total store catalog size fetched from CheapShark
+- number of active stores after filters
+- per-source candidate counts (CheapShark + Steam direct specials)
 
 ## 🔐 Security
 

@@ -44,8 +44,12 @@ class Settings:
     max_price: float
     max_posts_per_run: int
     only_steam_redeemable: bool
+    include_steam_direct_specials: bool
 
     allowed_store_ids: List[str]
+    allowed_store_names: List[str]
+    excluded_store_ids: List[str]
+    excluded_store_names: List[str]
     exclude_keywords: Set[str]
 
     posted_cache_file: Path
@@ -63,8 +67,12 @@ def load_settings() -> Settings:
     max_price = _to_float(os.getenv("MAX_PRICE", "10.00"), 10.0)
     max_posts = _to_int(os.getenv("MAX_POSTS_PER_RUN", "10"), 10)
     only_steam = _to_bool(os.getenv("ONLY_STEAM_REDEEMABLE", "true"), True)
+    include_steam_direct_specials = _to_bool(os.getenv("INCLUDE_STEAM_DIRECT_SPECIALS", "true"), True)
 
     allowed_store_ids = _to_csv_list(os.getenv("ALLOWED_STORE_IDS", ""))
+    allowed_store_names = _to_csv_list(os.getenv("ALLOWED_STORE_NAMES", ""))
+    excluded_store_ids = _to_csv_list(os.getenv("EXCLUDED_STORE_IDS", ""))
+    excluded_store_names = _to_csv_list(os.getenv("EXCLUDED_STORE_NAMES", ""))
 
     # Default excludes (override by setting EXCLUDE_KEYWORDS)
     default_excludes = {"hentai", "nsfw", "sex", "porn", "simulator"}
@@ -86,7 +94,11 @@ def load_settings() -> Settings:
         max_price=max_price,
         max_posts_per_run=max_posts,
         only_steam_redeemable=only_steam,
+        include_steam_direct_specials=include_steam_direct_specials,
         allowed_store_ids=allowed_store_ids,
+        allowed_store_names=allowed_store_names,
+        excluded_store_ids=excluded_store_ids,
+        excluded_store_names=excluded_store_names,
         exclude_keywords=exclude_keywords,
         posted_cache_file=posted_cache_file,
         embed_color=embed_color,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Set
+from typing import Dict, Set
 
 import requests
 
@@ -11,6 +11,7 @@ from .cheapshark import fetch_deals, fetch_stores
 from .config import load_settings
 from .discord_webhook import post_deals
 from .steam import is_coop_app
+from .steam_store import fetch_steam_specials
 
 
 def load_posted_ids(path: Path) -> Set[str]:
@@ -32,6 +33,38 @@ def save_posted_ids(path: Path, posted: Set[str]) -> None:
     path.write_text(json.dumps({"dealIDs": sorted(posted)}, indent=2), encoding="utf-8")
 
 
+
+
+def _normalize_store_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def _filter_store_map(stores: Dict[str, dict], s) -> Dict[str, dict]:
+    allowed_ids = set(s.allowed_store_ids)
+    excluded_ids = set(s.excluded_store_ids)
+
+    allowed_names = {_normalize_store_name(n) for n in s.allowed_store_names}
+    excluded_names = {_normalize_store_name(n) for n in s.excluded_store_names}
+
+    selected = stores
+    if allowed_ids or allowed_names:
+        selected = {
+            sid: st
+            for sid, st in selected.items()
+            if sid in allowed_ids
+            or _normalize_store_name(str(st.get("storeName", ""))) in allowed_names
+        }
+
+    if excluded_ids or excluded_names:
+        selected = {
+            sid: st
+            for sid, st in selected.items()
+            if sid not in excluded_ids
+            and _normalize_store_name(str(st.get("storeName", ""))) not in excluded_names
+        }
+
+    return selected
+
 def main() -> None:
     s = load_settings()
 
@@ -41,21 +74,39 @@ def main() -> None:
     print("=== Co-op Deals Bot ===")
     print(f"Max price: < ${s.max_price:.2f} | Max posts/run: {s.max_posts_per_run}")
     print(f"Steam redeemable filter: {s.only_steam_redeemable}")
-    print(f"Allowed stores: {s.allowed_store_ids if s.allowed_store_ids else 'ALL'}")
+    print(f"Include Steam direct specials source: {s.include_steam_direct_specials}")
+    print(f"Allowed store IDs: {s.allowed_store_ids if s.allowed_store_ids else 'ALL'}")
+    print(f"Allowed store names: {s.allowed_store_names if s.allowed_store_names else 'ALL'}")
+    print(f"Excluded store IDs: {s.excluded_store_ids if s.excluded_store_ids else 'NONE'}")
+    print(f"Excluded store names: {s.excluded_store_names if s.excluded_store_names else 'NONE'}")
     print(f"Exclude keywords: {sorted(s.exclude_keywords)}")
     print(f"Cache file: {s.posted_cache_file}")
     print(f"Role ping enabled: {s.ping_role_on_post} | Role ID: {s.discord_role_id or 'none'}")
 
     stores = fetch_stores()
+    filtered_stores = _filter_store_map(stores, s)
+    if not filtered_stores:
+        print("No stores matched current allow/exclude filters. Nothing posted.")
+        return
+
+    print(f"Store catalog size: {len(stores)} | Active stores after filters: {len(filtered_stores)}")
+
     posted = load_posted_ids(s.posted_cache_file)
 
-    candidates = fetch_deals(
+    cheapshark_candidates = fetch_deals(
         upper_price=s.max_price,
         steamworks_only=s.only_steam_redeemable,
-        allowed_store_ids=s.allowed_store_ids if s.allowed_store_ids else None,
-        store_map=stores,
+        allowed_store_ids=list(filtered_stores.keys()),
+        store_map=filtered_stores,
     )
-    print(f"Fetched candidates: {len(candidates)} | Already posted: {len(posted)}")
+
+    steam_direct_candidates = fetch_steam_specials(s.max_price) if s.include_steam_direct_specials else []
+    candidates = cheapshark_candidates + steam_direct_candidates
+    print(
+        f"Fetched candidates: {len(candidates)} "
+        f"(CheapShark={len(cheapshark_candidates)}, SteamDirect={len(steam_direct_candidates)}) "
+        f"| Already posted: {len(posted)}"
+    )
 
     selected = []
     for d in candidates:
