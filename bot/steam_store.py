@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import requests
-
+from .http_client import get_json
 from .models import Deal
 
 STEAM_FEATURED_URL = "https://store.steampowered.com/api/featuredcategories"
@@ -11,11 +10,7 @@ STEAM_STORE_ICON = "https://store.cloudflare.steamstatic.com/public/shared/image
 
 
 def fetch_steam_specials(upper_price: float, timeout: int = 20) -> List[Deal]:
-    params = {"cc": "us", "l": "en"}
-    r = requests.get(STEAM_FEATURED_URL, params=params, timeout=timeout)
-    r.raise_for_status()
-    payload: Dict[str, Any] = r.json()
-
+    payload: Dict[str, Any] = get_json(STEAM_FEATURED_URL, params={"cc": "us", "l": "en"}, timeout=timeout)
     specials = payload.get("specials", {}).get("items", [])
 
     deals: List[Deal] = []

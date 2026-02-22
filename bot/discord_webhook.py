@@ -5,7 +5,14 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from .http_client import build_session
 from .models import Deal
+
+
+def _reason_line(deal: Deal) -> Optional[str]:
+    if deal.reason:
+        return f"Why this deal: {deal.reason}"
+    return None
 
 
 def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
@@ -15,6 +22,22 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
     price_line = f"**${deal.sale_price:.2f}** ~~${deal.normal_price:.2f}~~  (**-{deal.savings_pct:.0f}%**)"
     store_line = f"Store: **{deal.store_name}**"
 
+    desc_lines = [price_line, store_line]
+    if deal.coop_tags:
+        desc_lines.append(f"Co-op: **{', '.join(deal.coop_tags)}**")
+
+    if deal.review_summary:
+        if deal.review_percent is not None and deal.review_count is not None:
+            desc_lines.append(
+                f"Steam Reviews: **{deal.review_summary}** ({deal.review_percent}% of {deal.review_count:,})"
+            )
+        else:
+            desc_lines.append(f"Steam Reviews: **{deal.review_summary}**")
+
+    reason_line = _reason_line(deal)
+    if reason_line:
+        desc_lines.append(reason_line)
+
     links_value = f"[Buy deal]({deal.deal_url})"
     if steam_url:
         links_value += f" • [Steam]({steam_url})"
@@ -22,10 +45,10 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
     embed: Dict[str, Any] = {
         "title": deal.title[:256],
         "url": main_url,
-        "description": f"{price_line}\n{store_line}"[:4096],
+        "description": "\n".join(desc_lines)[:4096],
         "color": embed_color,
         "fields": [{"name": "Links", "value": links_value, "inline": False}],
-        "footer": {"text": f"Source: {deal.source_label} • Filter: Co-op + <$10"},
+        "footer": {"text": f"Source: {deal.source_label} • Curated Co-op Deals"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -45,23 +68,19 @@ def post_embeds(
     role_id_to_ping: Optional[str] = None,
     timeout: int = 20,
 ) -> None:
-    """
-    Discord: max 10 embeds per message.
-    If role_id_to_ping is set, we mention only that role.
-    """
     mention = f"<@&{role_id_to_ping}> " if role_id_to_ping else ""
     payload = {
         "content": f"{mention}{content}",
         "username": username,
         "embeds": embeds[:10],
-        # Only allow mentioning this role (prevents @everyone and other mentions)
         "allowed_mentions": {
             "parse": [],
             "roles": [role_id_to_ping] if role_id_to_ping else [],
         },
     }
 
-    r = requests.post(webhook_url, json=payload, timeout=timeout)
+    session = build_session()
+    r = session.post(webhook_url, json=payload, timeout=timeout)
     r.raise_for_status()
 
 
@@ -70,13 +89,14 @@ def post_deals(
     username: str,
     deals: List[Deal],
     embed_color: int,
+    message_title: str,
     role_id_to_ping: Optional[str] = None,
 ) -> None:
     embeds = [build_embed(d, embed_color) for d in deals]
     post_embeds(
         webhook_url=webhook_url,
         username=username,
-        content="🎮 **Tonight’s Co-op Deals (Under $10)**",
+        content=message_title,
         embeds=embeds,
         role_id_to_ping=role_id_to_ping,
     )
