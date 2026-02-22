@@ -69,7 +69,8 @@ def main() -> None:
     s = load_settings()
 
     if not s.discord_webhook_url:
-        raise SystemExit("Missing DISCORD_WEBHOOK_URL. Set it as a GitHub Secret.")
+        print("⚠️ Missing DISCORD_WEBHOOK_URL. Set it as a GitHub Secret. Skipping run.")
+        return
 
     print("=== Co-op Deals Bot ===")
     print(f"Max price: < ${s.max_price:.2f} | Max posts/run: {s.max_posts_per_run}")
@@ -82,6 +83,9 @@ def main() -> None:
     print(f"Exclude keywords: {sorted(s.exclude_keywords)}")
     print(f"Cache file: {s.posted_cache_file}")
     print(f"Role ping enabled: {s.ping_role_on_post} | Role ID: {s.discord_role_id or 'none'}")
+
+    if s.ping_role_on_post and not s.discord_role_id:
+        print("⚠️ PING_ROLE_ON_POST=true but DISCORD_ROLE_ID is empty. Continuing without role mention.")
 
     stores = fetch_stores()
     filtered_stores = _filter_store_map(stores, s)
