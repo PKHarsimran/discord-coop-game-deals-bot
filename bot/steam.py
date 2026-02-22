@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 
 from .http_client import get_json
 

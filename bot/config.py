@@ -36,6 +36,20 @@ def _to_csv_set(v: str | None) -> Set[str]:
     return set(_to_csv_list(v))
 
 
+def _to_color(v: str | None, default: int) -> int:
+    if v is None:
+        return default
+    try:
+        return int(v, 0)
+    except Exception:
+        return default
+
+
+def _normalize_digest_mode(v: str | None) -> str:
+    mode = (v or "daily").strip().lower() or "daily"
+    return mode if mode in {"daily", "weekend", "budget"} else "daily"
+
+
 @dataclass(frozen=True)
 class Settings:
     discord_webhook_url: str
@@ -61,14 +75,15 @@ class Settings:
 
     digest_mode: str
     price_sweet_spot: float
+    min_discount_percent: float
 
 
 def load_settings() -> Settings:
     webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     username = os.getenv("DISCORD_WEBHOOK_USERNAME", "Co-op Deals Bot").strip() or "Co-op Deals Bot"
 
-    max_price = _to_float(os.getenv("MAX_PRICE", "10.00"), 10.0)
-    max_posts = _to_int(os.getenv("MAX_POSTS_PER_RUN", "10"), 10)
+    max_price = max(0.01, _to_float(os.getenv("MAX_PRICE", "10.00"), 10.0))
+    max_posts = max(1, _to_int(os.getenv("MAX_POSTS_PER_RUN", "10"), 10))
     only_steam = _to_bool(os.getenv("ONLY_STEAM_REDEEMABLE", "true"), True)
     include_steam_direct_specials = _to_bool(os.getenv("INCLUDE_STEAM_DIRECT_SPECIALS", "true"), True)
 
@@ -84,13 +99,14 @@ def load_settings() -> Settings:
     posted_cache_file = Path(os.getenv("POSTED_CACHE_FILE", "data/posted_deals.json"))
     steam_cache_file = Path(os.getenv("STEAM_COOP_CACHE_FILE", "data/steam_coop_cache.json"))
 
-    embed_color = int(os.getenv("EMBED_COLOR", str(0x57F287)), 0)
+    embed_color = _to_color(os.getenv("EMBED_COLOR", str(0x57F287)), 0x57F287)
 
     ping_role_on_post = _to_bool(os.getenv("PING_ROLE_ON_POST", "false"), False)
     discord_role_id = os.getenv("DISCORD_ROLE_ID", "").strip()
 
-    digest_mode = os.getenv("DIGEST_MODE", "daily").strip().lower() or "daily"
-    price_sweet_spot = _to_float(os.getenv("PRICE_SWEET_SPOT", "5.0"), 5.0)
+    digest_mode = _normalize_digest_mode(os.getenv("DIGEST_MODE", "daily"))
+    price_sweet_spot = max(0.0, _to_float(os.getenv("PRICE_SWEET_SPOT", "5.0"), 5.0))
+    min_discount_percent = min(100.0, max(0.0, _to_float(os.getenv("MIN_DISCOUNT_PERCENT", "0"), 0.0)))
 
     return Settings(
         discord_webhook_url=webhook,
@@ -111,4 +127,5 @@ def load_settings() -> Settings:
         discord_role_id=discord_role_id,
         digest_mode=digest_mode,
         price_sweet_spot=price_sweet_spot,
+        min_discount_percent=min_discount_percent,
     )
