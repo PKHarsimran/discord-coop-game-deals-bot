@@ -81,7 +81,7 @@ def fetch_deals(
                 store_icon=store_icon,
                 steam_app_id=(str(item.get("steamAppID")).strip() if item.get("steamAppID") else None),
                 thumb=(str(item.get("thumb")).strip() if item.get("thumb") else None),
-                buy_url=f"https://www.cheapshark.com/redirect?dealID={str(item.get("dealID", "")).strip()}",
+                buy_url=f"https://www.cheapshark.com/redirect?dealID={str(item.get('dealID', '')).strip()}",
                 source_label="CheapShark",
             )
             if deal.deal_id and deal.title and deal.sale_price > 0:

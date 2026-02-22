@@ -87,7 +87,12 @@ def main() -> None:
     if s.ping_role_on_post and not s.discord_role_id:
         print("⚠️ PING_ROLE_ON_POST=true but DISCORD_ROLE_ID is empty. Continuing without role mention.")
 
-    stores = fetch_stores()
+    try:
+        stores = fetch_stores()
+    except requests.RequestException as e:
+        print(f"⚠️ Failed to fetch store catalog from CheapShark: {e}")
+        return
+
     filtered_stores = _filter_store_map(stores, s)
     if not filtered_stores:
         print("No stores matched current allow/exclude filters. Nothing posted.")
@@ -97,14 +102,25 @@ def main() -> None:
 
     posted = load_posted_ids(s.posted_cache_file)
 
-    cheapshark_candidates = fetch_deals(
-        upper_price=s.max_price,
-        steamworks_only=s.only_steam_redeemable,
-        allowed_store_ids=list(filtered_stores.keys()),
-        store_map=filtered_stores,
-    )
+    try:
+        cheapshark_candidates = fetch_deals(
+            upper_price=s.max_price,
+            steamworks_only=s.only_steam_redeemable,
+            allowed_store_ids=list(filtered_stores.keys()),
+            store_map=filtered_stores,
+        )
+    except requests.RequestException as e:
+        print(f"⚠️ Failed to fetch deals from CheapShark: {e}")
+        cheapshark_candidates = []
 
-    steam_direct_candidates = fetch_steam_specials(s.max_price) if s.include_steam_direct_specials else []
+    if s.include_steam_direct_specials:
+        try:
+            steam_direct_candidates = fetch_steam_specials(s.max_price)
+        except requests.RequestException as e:
+            print(f"⚠️ Failed to fetch specials from Steam Store API: {e}")
+            steam_direct_candidates = []
+    else:
+        steam_direct_candidates = []
     candidates = cheapshark_candidates + steam_direct_candidates
     print(
         f"Fetched candidates: {len(candidates)} "
@@ -147,13 +163,18 @@ def main() -> None:
 
     role_id = s.discord_role_id if (s.ping_role_on_post and s.discord_role_id) else None
 
-    post_deals(
-        webhook_url=s.discord_webhook_url,
-        username=s.discord_webhook_username,
-        deals=selected,
-        embed_color=s.embed_color,
-        role_id_to_ping=role_id,
-    )
+    try:
+        post_deals(
+            webhook_url=s.discord_webhook_url,
+            username=s.discord_webhook_username,
+            deals=selected,
+            embed_color=s.embed_color,
+            role_id_to_ping=role_id,
+        )
+    except requests.RequestException as e:
+        print(f"⚠️ Failed to post deals to Discord webhook: {e}")
+        return
+
     print(f"🚀 Posted {len(selected)} deal(s) to Discord")
 
     for d in selected:
