@@ -106,6 +106,7 @@ def main() -> None:
     print(f"Steam redeemable filter: {s.only_steam_redeemable}")
     print(f"Include Steam direct specials source: {s.include_steam_direct_specials}")
     print(f"Digest mode: {s.digest_mode} | Sweet spot: ${s.price_sweet_spot:.2f}")
+    print(f"Minimum discount: {s.min_discount_percent:.1f}%")
 
     try:
         stores = fetch_stores()
@@ -146,6 +147,9 @@ def main() -> None:
 
     for d in candidates:
         if d.sale_price >= s.max_price:
+            continue
+
+        if d.savings_pct < s.min_discount_percent:
             continue
 
         if any(k in d.title.lower() for k in s.exclude_keywords):
@@ -189,10 +193,17 @@ def main() -> None:
     )
 
     selected: List[Deal] = []
+    seen_appids: Set[str] = set()
     for d in ranked:
         if d.deal_id in posted:
             continue
+        if d.steam_app_id and d.steam_app_id in seen_appids:
+            continue
+
         selected.append(d)
+        if d.steam_app_id:
+            seen_appids.add(d.steam_app_id)
+
         if len(selected) >= s.max_posts_per_run:
             break
 
