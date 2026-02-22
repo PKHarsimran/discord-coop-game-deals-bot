@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 
-@dataclass(frozen=True)
+@dataclass
 class Deal:
     deal_id: str
     title: str
@@ -18,6 +18,11 @@ class Deal:
     thumb: Optional[str]
     buy_url: Optional[str] = None
     source_label: str = "CheapShark"
+    coop_tags: Optional[List[str]] = None
+    review_summary: Optional[str] = None
+    review_percent: Optional[int] = None
+    review_count: Optional[int] = None
+    reason: Optional[str] = None
 
     @property
     def cheapshark_url(self) -> str:

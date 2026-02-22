@@ -3,142 +3,74 @@
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![License](https://img.shields.io/github/license/PKHarsimran/discord-coop-game-deals-bot)
 
-A **Discord webhook bot** that automatically posts **co-op PC game deals under $10** from multiple stores (via **CheapShark**), **verifies co-op support using Steam categories**, and runs **daily** using **GitHub Actions** — no servers required.
-
-Perfect for Discord servers that want **daily co-op game deals** without spam or duplicate posts.
+A **Discord webhook bot** that posts curated **co-op PC game deals under your target price** from CheapShark + Steam, verifies co-op support with Steam categories, enriches posts with review context, and runs on GitHub Actions.
 
 ---
 
-## ✨ Features
+## ✨ What’s Better Now
 
-- 🔍 Finds PC game deals under a configurable price threshold  
-- 🤝 Verifies **co-op support** using Steam’s official categories  
-- 🛒 Supports **multiple sources + stores** (CheapShark catalog + Steam direct specials)  
-- 📬 Posts clean, rich **Discord embeds** via webhooks  
-- 🧠 Prevents reposts using a cached `posted_deals.json`  
-- ⏱️ Runs **automatically once per day** using GitHub Actions  
-- 🔒 Webhook is kept **100% private** using GitHub Secrets  
-
----
-
-## 🚀 How It Works
-
-1. GitHub Actions runs the bot on a daily schedule  
-2. Deals are fetched from CheapShark  
-3. Each game is checked against Steam to confirm co-op support  
-4. Matching deals under the price limit are posted to Discord  
-5. Previously posted deals are skipped automatically  
+- 🔍 Smart ranking (not first-come): discounts + price sweet spot + co-op depth + review quality
+- 🤝 Co-op metadata in post (online/LAN/split-screen tags when available)
+- ⭐ Steam review summary enrichment
+- 🧠 “Why this deal” explanation per game
+- ♻️ Retry/backoff HTTP client for better reliability
+- ⚡ Steam metadata cache (`data/steam_coop_cache.json`) to reduce repeated API calls
+- 📬 Digest modes: `daily`, `weekend`, `budget`
+- 🧱 Duplicate prevention cache (`data/posted_deals.json`)
 
 ---
 
-## 🧰 Tech Stack
+## 🚀 Quick Start
 
-- Python 3.11  
-- CheapShark API  
-- Steam Store API  
-- Discord Webhooks  
-- GitHub Actions  
+1. Create a Discord webhook
+2. Add GitHub secrets:
+   - `DISCORD_WEBHOOK_URL` (required)
+   - `DISCORD_WEBHOOK_USERNAME` (optional)
+   - `DISCORD_ROLE_ID` (optional; needed only when role ping is enabled)
+3. Enable Actions and run workflow manually once
 
 ---
 
-## ⚡ Quick Start
+## ⚙️ Configuration
 
-### 1️⃣ Create a Discord Webhook
-- Go to **Server Settings → Integrations → Webhooks**
-- Copy the webhook URL
-
-### 2️⃣ Add GitHub Secrets
-In your GitHub repo:
-- Go to **Settings → Secrets and variables → Actions**
-- Add:
-  - `DISCORD_WEBHOOK_URL` (required)
-  - `DISCORD_WEBHOOK_USERNAME` (optional)
-
-### 3️⃣ Done 🎉
-GitHub Actions will now run the bot automatically based on the schedule defined in:
-
-```
-.github/workflows/coop-deals.yml
-```
-
-You can also trigger it manually from the **Actions** tab.
+| Variable | Description | Default |
+|---|---|---|
+| `MAX_PRICE` | Maximum deal price (strict upper bound) | `10.00` |
+| `MAX_POSTS_PER_RUN` | Max deals per run | `10` |
+| `ONLY_STEAM_REDEEMABLE` | Steamworks-only deals from CheapShark | `true` |
+| `INCLUDE_STEAM_DIRECT_SPECIALS` | Include Steam Store specials source | `true` |
+| `ALLOWED_STORE_IDS` | Allow-list store IDs | all |
+| `ALLOWED_STORE_NAMES` | Allow-list store names | all |
+| `EXCLUDED_STORE_IDS` | Block-list store IDs | none |
+| `EXCLUDED_STORE_NAMES` | Block-list store names | none |
+| `EXCLUDE_KEYWORDS` | Filter title keywords | `hentai, nsfw, sex, porn, simulator` |
+| `EMBED_COLOR` | Discord embed color | `0x57F287` |
+| `PING_ROLE_ON_POST` | Ping a role when posting | `false` |
+| `DISCORD_ROLE_ID` | Role ID to mention | empty |
+| `DIGEST_MODE` | `daily`, `weekend`, or `budget` | `daily` |
+| `PRICE_SWEET_SPOT` | Bonus scoring threshold for low prices | `5.0` |
+| `POSTED_CACHE_FILE` | Posted deal cache path | `data/posted_deals.json` |
+| `STEAM_COOP_CACHE_FILE` | Steam metadata cache path | `data/steam_coop_cache.json` |
 
 ---
 
 ## ⏰ Schedule
 
-By default, the bot runs **once per day** using this cron schedule (UTC):
+Workflow runs:
+- Daily: `0 9 * * *`
+- Friday bonus run: `0 16 * * 5`
 
-```yaml
-cron: "0 9 * * *"
-```
-
----
-
-## ⚙️ Configuration (Optional)
-
-| Variable | Description | Default |
-|--------|------------|---------|
-| `MAX_PRICE` | Maximum deal price | `10.00` |
-| `MAX_POSTS_PER_RUN` | Max deals per run | `10` |
-| `ONLY_STEAM_REDEEMABLE` | Steamworks-only deals from CheapShark | `true` |
-| `INCLUDE_STEAM_DIRECT_SPECIALS` | Include Steam Store specials as extra source | `true` |
-| `ALLOWED_STORE_IDS` | Limit to specific store IDs (comma-separated) | all |
-| `ALLOWED_STORE_NAMES` | Limit to specific store names (comma-separated, case-insensitive) | all |
-| `EXCLUDED_STORE_IDS` | Exclude specific store IDs (comma-separated) | none |
-| `EXCLUDED_STORE_NAMES` | Exclude specific store names (comma-separated, case-insensitive) | none |
-| `EXCLUDE_KEYWORDS` | Filter out unwanted titles | `hentai, nsfw, sex, porn, simulator` |
+You can also trigger manually and pass a digest mode input.
 
 ---
-
-### 🔔 Optional Role Ping (Opt-in)
-
-If you want the bot to ping a Discord role when it posts new deals:
-
-- Add `DISCORD_ROLE_ID` as a GitHub Secret (role ID number)
-- Set `PING_ROLE_ON_POST=true`
-
-| Variable | Description | Default |
-|--------|------------|---------|
-| `PING_ROLE_ON_POST` | Enable role ping on post | `false` |
-| `DISCORD_ROLE_ID` | Role ID to mention (e.g., `123...`) | empty |
-
-> Tip: Enable Discord Developer Mode → right-click the role → **Copy ID**
-
-
-
-### 🏪 Add More Shops / Markets
-
-CheapShark already tracks many stores, so the bot can include more markets by widening your filters:
-
-- Leave `ALLOWED_STORE_IDS` and `ALLOWED_STORE_NAMES` empty to include **all available stores**
-- Use `ALLOWED_STORE_NAMES` for easy targeting (example: `Steam,Humble Store,Fanatical`)
-- Use `EXCLUDED_STORE_NAMES` to block stores you don't want
-
-You can mix allow + exclude rules. Example:
-
-```env
-ALLOWED_STORE_NAMES=Steam,Humble Store,Fanatical,GreenManGaming
-EXCLUDED_STORE_NAMES=IndieGala
-```
-
-The runtime logs now show:
-- total store catalog size fetched from CheapShark
-- number of active stores after filters
-- per-source candidate counts (CheapShark + Steam direct specials)
 
 ## 🔐 Security
 
-- Webhook URL is never committed  
-- Stored securely using GitHub Secrets  
-- Safe for public repositories  
+- Webhook stays in GitHub Secrets
+- Safe mention policy (`allowed_mentions`) prevents broad mention abuse
 
 ---
 
 ## 📜 License
 
 MIT License
-
----
-
-⭐ If this bot helps your server, consider starring the repo!

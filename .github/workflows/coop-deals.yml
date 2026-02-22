@@ -2,8 +2,14 @@ name: Co-op Deals Bot
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # once per day at 09:00 UTC
+    - cron: "0 9 * * *"
+    - cron: "0 16 * * 5"
   workflow_dispatch:
+    inputs:
+      digest_mode:
+        description: "Digest mode override (daily/weekend/budget)"
+        required: false
+        default: "daily"
 
 permissions:
   contents: read
@@ -26,12 +32,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Persist posted deals across runs (prevents reposts)
       - name: Restore posted deals cache
         uses: actions/cache@v4
         with:
-          path: data/posted_deals.json
-          key: coop-deals-posted-cache-v1
+          path: |
+            data/posted_deals.json
+            data/steam_coop_cache.json
+          key: coop-deals-posted-cache-v2
           restore-keys: |
             coop-deals-posted-cache-
 
@@ -40,15 +47,15 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_USERNAME: ${{ secrets.DISCORD_WEBHOOK_USERNAME }}
 
-          # Role ping (opt-in)
-          PING_ROLE_ON_POST: "true"                 # set to "false" to disable
-          DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}  # optional secret (required only if ping enabled)
+          PING_ROLE_ON_POST: "true"
+          DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
+
+          DIGEST_MODE: ${{ github.event.inputs.digest_mode || 'daily' }}
 
           # Optional overrides:
           # MAX_PRICE: "10"
           # MAX_POSTS_PER_RUN: "10"
           # ONLY_STEAM_REDEEMABLE: "true"
-          # ALLOWED_STORE_IDS: "1,7,8,11"
-          # EXCLUDE_KEYWORDS: "hentai,nsfw,sex,porn,simulator"
+          # PRICE_SWEET_SPOT: "5"
         run: |
           python -m bot.main

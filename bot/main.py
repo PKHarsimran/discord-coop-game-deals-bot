@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 import requests
 
 from .cheapshark import fetch_deals, fetch_stores
 from .config import load_settings
 from .discord_webhook import post_deals
-from .steam import is_coop_app
+from .models import Deal
+from .steam import SteamCoopCache, fetch_coop_metadata, fetch_review_summary
 from .steam_store import fetch_steam_specials
 
 
@@ -31,8 +31,6 @@ def load_posted_ids(path: Path) -> Set[str]:
 def save_posted_ids(path: Path, posted: Set[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"dealIDs": sorted(posted)}, indent=2), encoding="utf-8")
-
-
 
 
 def _normalize_store_name(name: str) -> str:
@@ -65,6 +63,37 @@ def _filter_store_map(stores: Dict[str, dict], s) -> Dict[str, dict]:
 
     return selected
 
+
+def _digest_title(mode: str, max_price: float) -> str:
+    if mode == "weekend":
+        return f"🎉 **Weekend Co-op Picks (Under ${max_price:.0f})**"
+    if mode == "budget":
+        return f"💸 **Ultra-Budget Co-op Picks (Under ${max_price:.0f})**"
+    return f"🎮 **Tonight's Co-op Deals (Under ${max_price:.0f})**"
+
+
+def _score_deal(d: Deal, sweet_spot: float, was_posted: bool) -> float:
+    discount_score = d.savings_pct
+    cheap_bonus = max(0.0, (sweet_spot - d.sale_price) * 4.0)
+    coop_bonus = float(len(d.coop_tags or [])) * 6.0
+    review_bonus = float((d.review_percent or 0) / 5.0)
+    recency_penalty = 35.0 if was_posted else 0.0
+    return discount_score + cheap_bonus + coop_bonus + review_bonus - recency_penalty
+
+
+def _reason_for_deal(d: Deal, sweet_spot: float) -> str:
+    reasons: List[str] = []
+    if d.savings_pct >= 75:
+        reasons.append(f"massive -{d.savings_pct:.0f}% discount")
+    if d.sale_price <= sweet_spot:
+        reasons.append(f"in the sweet spot under ${sweet_spot:.2f}")
+    if d.coop_tags and len(d.coop_tags) > 1:
+        reasons.append("supports multiple co-op modes")
+    if d.review_summary and d.review_percent and d.review_percent >= 80:
+        reasons.append(f"strong Steam sentiment ({d.review_percent}%)")
+    return ", ".join(reasons) if reasons else "solid co-op value pick"
+
+
 def main() -> None:
     s = load_settings()
 
@@ -76,16 +105,7 @@ def main() -> None:
     print(f"Max price: < ${s.max_price:.2f} | Max posts/run: {s.max_posts_per_run}")
     print(f"Steam redeemable filter: {s.only_steam_redeemable}")
     print(f"Include Steam direct specials source: {s.include_steam_direct_specials}")
-    print(f"Allowed store IDs: {s.allowed_store_ids if s.allowed_store_ids else 'ALL'}")
-    print(f"Allowed store names: {s.allowed_store_names if s.allowed_store_names else 'ALL'}")
-    print(f"Excluded store IDs: {s.excluded_store_ids if s.excluded_store_ids else 'NONE'}")
-    print(f"Excluded store names: {s.excluded_store_names if s.excluded_store_names else 'NONE'}")
-    print(f"Exclude keywords: {sorted(s.exclude_keywords)}")
-    print(f"Cache file: {s.posted_cache_file}")
-    print(f"Role ping enabled: {s.ping_role_on_post} | Role ID: {s.discord_role_id or 'none'}")
-
-    if s.ping_role_on_post and not s.discord_role_id:
-        print("⚠️ PING_ROLE_ON_POST=true but DISCORD_ROLE_ID is empty. Continuing without role mention.")
+    print(f"Digest mode: {s.digest_mode} | Sweet spot: ${s.price_sweet_spot:.2f}")
 
     try:
         stores = fetch_stores()
@@ -98,9 +118,8 @@ def main() -> None:
         print("No stores matched current allow/exclude filters. Nothing posted.")
         return
 
-    print(f"Store catalog size: {len(stores)} | Active stores after filters: {len(filtered_stores)}")
-
     posted = load_posted_ids(s.posted_cache_file)
+    steam_cache = SteamCoopCache(s.steam_cache_file)
 
     try:
         cheapshark_candidates = fetch_deals(
@@ -121,39 +140,59 @@ def main() -> None:
             steam_direct_candidates = []
     else:
         steam_direct_candidates = []
-    candidates = cheapshark_candidates + steam_direct_candidates
-    print(
-        f"Fetched candidates: {len(candidates)} "
-        f"(CheapShark={len(cheapshark_candidates)}, SteamDirect={len(steam_direct_candidates)}) "
-        f"| Already posted: {len(posted)}"
-    )
 
-    selected = []
+    candidates = cheapshark_candidates + steam_direct_candidates
+    enriched: List[Deal] = []
+
     for d in candidates:
-        # HARD filter: guarantee < MAX_PRICE
         if d.sale_price >= s.max_price:
             continue
 
-        if d.deal_id in posted:
+        if any(k in d.title.lower() for k in s.exclude_keywords):
             continue
 
-        title_l = d.title.lower()
-        if any(k in title_l for k in s.exclude_keywords):
-            continue
-
-        # Need steam_app_id to validate co-op
         if not d.steam_app_id:
             continue
 
+        cached = steam_cache.get(d.steam_app_id)
         try:
-            if is_coop_app(d.steam_app_id):
-                selected.append(d)
-                print(f"✅ {d.title} | ${d.sale_price:.2f} | {d.store_name}")
+            if cached is None:
+                is_coop, tags = fetch_coop_metadata(d.steam_app_id)
+                review_summary, review_pct, review_count = fetch_review_summary(d.steam_app_id)
+                cached = {
+                    "is_coop": is_coop,
+                    "coop_tags": tags,
+                    "review_summary": review_summary,
+                    "review_percent": review_pct,
+                    "review_count": review_count,
+                }
+                steam_cache.set(d.steam_app_id, cached)
+
+            if not bool(cached.get("is_coop")):
+                continue
+
+            d.coop_tags = list(cached.get("coop_tags") or [])
+            d.review_summary = cached.get("review_summary")
+            d.review_percent = cached.get("review_percent")
+            d.review_count = cached.get("review_count")
+            d.reason = _reason_for_deal(d, s.price_sweet_spot)
+            enriched.append(d)
         except requests.RequestException as e:
-            print(f"⚠️ Steam check failed for {d.title} (appid={d.steam_app_id}): {e}")
+            print(f"⚠️ Steam metadata check failed for {d.title} (appid={d.steam_app_id}): {e}")
 
-        time.sleep(0.15)
+    steam_cache.save()
 
+    ranked = sorted(
+        enriched,
+        key=lambda d: _score_deal(d, s.price_sweet_spot, d.deal_id in posted),
+        reverse=True,
+    )
+
+    selected: List[Deal] = []
+    for d in ranked:
+        if d.deal_id in posted:
+            continue
+        selected.append(d)
         if len(selected) >= s.max_posts_per_run:
             break
 
@@ -169,6 +208,7 @@ def main() -> None:
             username=s.discord_webhook_username,
             deals=selected,
             embed_color=s.embed_color,
+            message_title=_digest_title(s.digest_mode, s.max_price),
             role_id_to_ping=role_id,
         )
     except requests.RequestException as e:

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-import requests
-
+from .http_client import get_json
 from .models import Deal
 
 CHEAPSHARK_DEALS_URL = "https://www.cheapshark.com/api/1.0/deals"
@@ -11,13 +10,7 @@ CHEAPSHARK_STORES_URL = "https://www.cheapshark.com/api/1.0/stores"
 
 
 def fetch_stores(timeout: int = 20) -> Dict[str, Dict[str, Any]]:
-    """
-    Returns mapping: store_id -> store object containing storeName and images paths.
-    """
-    r = requests.get(CHEAPSHARK_STORES_URL, timeout=timeout)
-    r.raise_for_status()
-    raw = r.json()
-
+    raw = get_json(CHEAPSHARK_STORES_URL, timeout=timeout)
     stores: Dict[str, Dict[str, Any]] = {}
     for s in raw:
         sid = str(s.get("storeID", "")).strip()
@@ -31,7 +24,6 @@ def _store_icon_url(store_obj: Dict[str, Any]) -> Optional[str]:
     icon_rel = images.get("icon")
     if not icon_rel:
         return None
-    # CheapShark icons are typically relative paths like "/img/stores/icons/0.png"
     return f"https://www.cheapshark.com{icon_rel}"
 
 
@@ -42,10 +34,6 @@ def fetch_deals(
     store_map: Dict[str, Dict[str, Any]],
     timeout: int = 20,
 ) -> List[Deal]:
-    """
-    Fetch deal candidates from CheapShark.
-    Note: You MUST still hard-filter locally by price in main.py.
-    """
     params: Dict[str, str] = {
         "upperPrice": f"{upper_price:.2f}",
         "pageSize": "60",
@@ -58,9 +46,7 @@ def fetch_deals(
     if allowed_store_ids:
         params["storeID"] = ",".join(allowed_store_ids)
 
-    r = requests.get(CHEAPSHARK_DEALS_URL, params=params, timeout=timeout)
-    r.raise_for_status()
-    raw = r.json()
+    raw = get_json(CHEAPSHARK_DEALS_URL, params=params, timeout=timeout)
 
     deals: List[Deal] = []
     for item in raw:

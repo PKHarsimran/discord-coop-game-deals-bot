@@ -53,11 +53,14 @@ class Settings:
     exclude_keywords: Set[str]
 
     posted_cache_file: Path
+    steam_cache_file: Path
     embed_color: int
 
-    # Role ping (opt-in)
     ping_role_on_post: bool
     discord_role_id: str
+
+    digest_mode: str
+    price_sweet_spot: float
 
 
 def load_settings() -> Settings:
@@ -74,19 +77,20 @@ def load_settings() -> Settings:
     excluded_store_ids = _to_csv_list(os.getenv("EXCLUDED_STORE_IDS", ""))
     excluded_store_names = _to_csv_list(os.getenv("EXCLUDED_STORE_NAMES", ""))
 
-    # Default excludes (override by setting EXCLUDE_KEYWORDS)
     default_excludes = {"hentai", "nsfw", "sex", "porn", "simulator"}
     env_excludes = os.getenv("EXCLUDE_KEYWORDS")
     exclude_keywords = _to_csv_set(env_excludes) if env_excludes is not None else default_excludes
 
     posted_cache_file = Path(os.getenv("POSTED_CACHE_FILE", "data/posted_deals.json"))
+    steam_cache_file = Path(os.getenv("STEAM_COOP_CACHE_FILE", "data/steam_coop_cache.json"))
 
-    # Embed color (Discord integer color)
     embed_color = int(os.getenv("EMBED_COLOR", str(0x57F287)), 0)
 
-    # Role ping
     ping_role_on_post = _to_bool(os.getenv("PING_ROLE_ON_POST", "false"), False)
     discord_role_id = os.getenv("DISCORD_ROLE_ID", "").strip()
+
+    digest_mode = os.getenv("DIGEST_MODE", "daily").strip().lower() or "daily"
+    price_sweet_spot = _to_float(os.getenv("PRICE_SWEET_SPOT", "5.0"), 5.0)
 
     return Settings(
         discord_webhook_url=webhook,
@@ -101,7 +105,10 @@ def load_settings() -> Settings:
         excluded_store_names=excluded_store_names,
         exclude_keywords=exclude_keywords,
         posted_cache_file=posted_cache_file,
+        steam_cache_file=steam_cache_file,
         embed_color=embed_color,
         ping_role_on_post=ping_role_on_post,
         discord_role_id=discord_role_id,
+        digest_mode=digest_mode,
+        price_sweet_spot=price_sweet_spot,
     )
