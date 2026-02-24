@@ -14,9 +14,11 @@ A Discord webhook bot that finds co-op PC game deals under a configurable budget
 - Verifies co-op support from Steam category metadata.
 - Enriches deals with Steam review score summary.
 - Smart ranking based on discount, affordability, co-op depth, and sentiment.
+- Structured run metrics and logging for easier troubleshooting.
 - Duplicate protection:
   - avoids reposting previously posted deal IDs
   - avoids posting multiple entries for the same Steam app in one run
+  - optional franchise dedupe to reduce near-duplicate series entries
 - HTTP retry/backoff client for resilience.
 - Local JSON cache for Steam metadata to reduce repeated API calls.
 - Optional role ping with safe `allowed_mentions` usage.
@@ -74,7 +76,13 @@ PING_ROLE_ON_POST="false"
 DISCORD_ROLE_ID=""
 
 DIGEST_MODE="daily"
+PROFILE_NAME="default"
 PRICE_SWEET_SPOT="5.0"
+MIN_REVIEW_PERCENT="0"
+MIN_REVIEW_COUNT="0"
+FRANCHISE_DEDUPE_ENABLED="true"
+FRANCHISE_DEDUPE_WORDS="2"
+LOG_LEVEL="INFO"
 
 POSTED_CACHE_FILE="data/posted_deals.json"
 STEAM_COOP_CACHE_FILE="data/steam_coop_cache.json"
@@ -108,7 +116,13 @@ python -m bot.main
 | `PING_ROLE_ON_POST` | bool | `false` | Enables role pinging. |
 | `DISCORD_ROLE_ID` | string | empty | Role ID used when ping is enabled. |
 | `DIGEST_MODE` | enum | `daily` | `daily`, `weekend`, or `budget` (invalid values fall back to `daily`). |
+| `PROFILE_NAME` | string | `default` | Optional profile tag added to digest title (normalized to lowercase `a-z0-9_-`, max 32 chars). |
 | `PRICE_SWEET_SPOT` | float | `5.0` | Price threshold used in ranking/reasoning. |
+| `MIN_REVIEW_PERCENT` | int | `0` | Optional minimum Steam review score percentage for filtering (0–100). |
+| `MIN_REVIEW_COUNT` | int | `0` | Optional minimum number of Steam reviews for filtering. |
+| `FRANCHISE_DEDUPE_ENABLED` | bool | `true` | Skip multiple picks from the same normalized franchise/title prefix in one run. |
+| `FRANCHISE_DEDUPE_WORDS` | int | `2` | Number of leading normalized title words used to build franchise dedupe keys (1–5). |
+| `LOG_LEVEL` | string | `INFO` | Runtime logging verbosity (`DEBUG`, `INFO`, etc.). |
 | `POSTED_CACHE_FILE` | path | `data/posted_deals.json` | Posted deal cache path. |
 | `STEAM_COOP_CACHE_FILE` | path | `data/steam_coop_cache.json` | Steam metadata cache path. |
 
@@ -159,10 +173,11 @@ You can also trigger manually and pass digest mode as workflow input (if your wo
 
 ### Lint/format suggestions
 
-This repo currently only requires `requests`. For local quality checks:
+Runtime dependency is `requests`; `pytest` is used for local/CI tests. For local quality checks:
 
 ```bash
-python -m compileall bot
+python -m compileall bot tests
+pytest -q
 ```
 
 ---

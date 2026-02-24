@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import requests
-
 from .http_client import build_session
 from .models import Deal
+
+MAX_DISCORD_CONTENT_CHARS = 2000
 
 
 def _reason_line(deal: Deal) -> Optional[str]:
@@ -60,6 +60,20 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
     return embed
 
 
+def _compose_content(message_title: str, metrics_summary: Optional[str]) -> str:
+    title = message_title[:MAX_DISCORD_CONTENT_CHARS]
+    if not metrics_summary:
+        return title
+
+    separator = "\n"
+    room_for_metrics = MAX_DISCORD_CONTENT_CHARS - len(title) - len(separator)
+    if room_for_metrics <= 0:
+        return title
+
+    trimmed_metrics = metrics_summary[:room_for_metrics]
+    return f"{title}{separator}{trimmed_metrics}"
+
+
 def post_embeds(
     webhook_url: str,
     username: str,
@@ -91,12 +105,13 @@ def post_deals(
     embed_color: int,
     message_title: str,
     role_id_to_ping: Optional[str] = None,
+    metrics_summary: Optional[str] = None,
 ) -> None:
     embeds = [build_embed(d, embed_color) for d in deals]
     post_embeds(
         webhook_url=webhook_url,
         username=username,
-        content=message_title,
+        content=_compose_content(message_title, metrics_summary),
         embeds=embeds,
         role_id_to_ping=role_id_to_ping,
     )

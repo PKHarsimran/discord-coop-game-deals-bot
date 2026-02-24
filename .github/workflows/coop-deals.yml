@@ -10,6 +10,10 @@ on:
         description: "Digest mode override (daily/weekend/budget)"
         required: false
         default: "daily"
+      profile_name:
+        description: "Profile tag shown in digest title"
+        required: false
+        default: "default"
 
 permissions:
   contents: read
@@ -32,13 +36,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Validate source compiles
+        run: |
+          python -m compileall bot tests
+
+      - name: Run unit tests
+        run: |
+          pytest -q
+
       - name: Restore posted deals cache
         uses: actions/cache@v4
         with:
           path: |
             data/posted_deals.json
             data/steam_coop_cache.json
-          key: coop-deals-posted-cache-v2
+          key: coop-deals-posted-cache-v3
           restore-keys: |
             coop-deals-posted-cache-
 
@@ -51,6 +63,14 @@ jobs:
           DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
 
           DIGEST_MODE: ${{ github.event.inputs.digest_mode || 'daily' }}
+          PROFILE_NAME: ${{ github.event.inputs.profile_name || 'default' }}
+
+          LOG_LEVEL: "INFO"
+          MIN_DISCOUNT_PERCENT: "20"
+          MIN_REVIEW_PERCENT: "70"
+          MIN_REVIEW_COUNT: "100"
+          FRANCHISE_DEDUPE_ENABLED: "true"
+          FRANCHISE_DEDUPE_WORDS: "2"
 
           # Optional overrides:
           # MAX_PRICE: "10"
