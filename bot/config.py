@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Set
@@ -50,6 +51,15 @@ def _normalize_digest_mode(v: str | None) -> str:
     return mode if mode in {"daily", "weekend", "budget"} else "daily"
 
 
+def _normalize_profile_name(v: str | None) -> str:
+    raw = (v or "default").strip().lower()
+    if not raw:
+        return "default"
+    normalized = re.sub(r"[^a-z0-9_-]+", "-", raw)
+    normalized = re.sub(r"[-_]{2,}", "-", normalized).strip("-_")
+    return normalized[:32] if normalized else "default"
+
+
 @dataclass(frozen=True)
 class Settings:
     discord_webhook_url: str
@@ -74,8 +84,16 @@ class Settings:
     discord_role_id: str
 
     digest_mode: str
+    profile_name: str
     price_sweet_spot: float
     min_discount_percent: float
+    min_review_percent: int
+    min_review_count: int
+
+    franchise_dedupe_enabled: bool
+    franchise_dedupe_words: int
+
+    log_level: str
 
 
 def load_settings() -> Settings:
@@ -105,8 +123,16 @@ def load_settings() -> Settings:
     discord_role_id = os.getenv("DISCORD_ROLE_ID", "").strip()
 
     digest_mode = _normalize_digest_mode(os.getenv("DIGEST_MODE", "daily"))
+    profile_name = _normalize_profile_name(os.getenv("PROFILE_NAME", "default"))
     price_sweet_spot = max(0.0, _to_float(os.getenv("PRICE_SWEET_SPOT", "5.0"), 5.0))
     min_discount_percent = min(100.0, max(0.0, _to_float(os.getenv("MIN_DISCOUNT_PERCENT", "0"), 0.0)))
+    min_review_percent = min(100, max(0, _to_int(os.getenv("MIN_REVIEW_PERCENT", "0"), 0)))
+    min_review_count = max(0, _to_int(os.getenv("MIN_REVIEW_COUNT", "0"), 0))
+
+    franchise_dedupe_enabled = _to_bool(os.getenv("FRANCHISE_DEDUPE_ENABLED", "true"), True)
+    franchise_dedupe_words = max(1, min(5, _to_int(os.getenv("FRANCHISE_DEDUPE_WORDS", "2"), 2)))
+
+    log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 
     return Settings(
         discord_webhook_url=webhook,
@@ -126,6 +152,12 @@ def load_settings() -> Settings:
         ping_role_on_post=ping_role_on_post,
         discord_role_id=discord_role_id,
         digest_mode=digest_mode,
+        profile_name=profile_name,
         price_sweet_spot=price_sweet_spot,
         min_discount_percent=min_discount_percent,
+        min_review_percent=min_review_percent,
+        min_review_count=min_review_count,
+        franchise_dedupe_enabled=franchise_dedupe_enabled,
+        franchise_dedupe_words=franchise_dedupe_words,
+        log_level=log_level,
     )

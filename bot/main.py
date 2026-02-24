@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set
 
@@ -13,6 +16,16 @@ from .models import Deal
 from .steam import SteamCoopCache, fetch_coop_metadata, fetch_review_summary
 from .steam_store import fetch_steam_specials
 
+LOGGER = logging.getLogger("coop_deals_bot")
+
+
+def configure_logging(level: str) -> None:
+    resolved = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=resolved,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
 
 def load_posted_ids(path: Path) -> Set[str]:
     if not path.exists():
@@ -23,14 +36,16 @@ def load_posted_ids(path: Path) -> Set[str]:
             return set(str(x) for x in data["dealIDs"])
         if isinstance(data, list):
             return set(str(x) for x in data)
-    except Exception:
-        pass
+    except Exception as e:
+        LOGGER.warning("Failed to load posted cache file %s: %s", path, e)
     return set()
 
 
 def save_posted_ids(path: Path, posted: Set[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"dealIDs": sorted(posted)}, indent=2), encoding="utf-8")
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps({"dealIDs": sorted(posted)}, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def _normalize_store_name(name: str) -> str:
@@ -64,12 +79,13 @@ def _filter_store_map(stores: Dict[str, dict], s) -> Dict[str, dict]:
     return selected
 
 
-def _digest_title(mode: str, max_price: float) -> str:
+def _digest_title(mode: str, max_price: float, profile_name: str) -> str:
+    prefix = f"[{profile_name}] " if profile_name != "default" else ""
     if mode == "weekend":
-        return f"🎉 **Weekend Co-op Picks (Under ${max_price:.0f})**"
+        return f"{prefix}🎉 **Weekend Co-op Picks (Under ${max_price:.0f})**"
     if mode == "budget":
-        return f"💸 **Ultra-Budget Co-op Picks (Under ${max_price:.0f})**"
-    return f"🎮 **Tonight's Co-op Deals (Under ${max_price:.0f})**"
+        return f"{prefix}💸 **Ultra-Budget Co-op Picks (Under ${max_price:.0f})**"
+    return f"{prefix}🎮 **Tonight's Co-op Deals (Under ${max_price:.0f})**"
 
 
 def _score_deal(d: Deal, sweet_spot: float, was_posted: bool) -> float:
@@ -94,29 +110,86 @@ def _reason_for_deal(d: Deal, sweet_spot: float) -> str:
     return ", ".join(reasons) if reasons else "solid co-op value pick"
 
 
+def _franchise_key(title: str, words: int) -> str | None:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", title.lower())
+    tokens = [
+        t
+        for t in normalized.split()
+        if (len(t) > 1 or t.isdigit()) and t not in {"edition", "bundle", "pack", "dlc"}
+    ]
+    if not tokens:
+        return None
+    return " ".join(tokens[:words])
+
+
+def _passes_review_threshold(
+    review_percent: object,
+    review_count: object,
+    min_review_percent: int,
+    min_review_count: int,
+) -> bool:
+    if min_review_percent <= 0 and min_review_count <= 0:
+        return True
+    if not isinstance(review_percent, int) or not isinstance(review_count, int):
+        return False
+    return review_percent >= min_review_percent and review_count >= min_review_count
+
+
+def _build_metrics_summary(metrics: "RunMetrics") -> str:
+    return (
+        f"Fetched: {metrics.fetched_total} | Posted: {metrics.posted_count}"
+        f" | Filtered(non-coop/reviews): {metrics.filtered_non_coop}/{metrics.filtered_reviews}"
+    )
+
+
+@dataclass
+class RunMetrics:
+    fetched_total: int = 0
+    filtered_price: int = 0
+    filtered_discount: int = 0
+    filtered_keyword: int = 0
+    filtered_missing_appid: int = 0
+    filtered_non_coop: int = 0
+    filtered_reviews: int = 0
+    filtered_already_posted: int = 0
+    filtered_duplicate_appid: int = 0
+    filtered_duplicate_franchise: int = 0
+    metadata_errors: int = 0
+    posted_count: int = 0
+    source_counts: Dict[str, int] = field(default_factory=dict)
+
+
 def main() -> None:
     s = load_settings()
+    configure_logging(s.log_level)
 
     if not s.discord_webhook_url:
-        print("⚠️ Missing DISCORD_WEBHOOK_URL. Set it as a GitHub Secret. Skipping run.")
+        LOGGER.warning("Missing DISCORD_WEBHOOK_URL. Set it as a GitHub Secret. Skipping run.")
         return
 
-    print("=== Co-op Deals Bot ===")
-    print(f"Max price: < ${s.max_price:.2f} | Max posts/run: {s.max_posts_per_run}")
-    print(f"Steam redeemable filter: {s.only_steam_redeemable}")
-    print(f"Include Steam direct specials source: {s.include_steam_direct_specials}")
-    print(f"Digest mode: {s.digest_mode} | Sweet spot: ${s.price_sweet_spot:.2f}")
-    print(f"Minimum discount: {s.min_discount_percent:.1f}%")
+    LOGGER.info("=== Co-op Deals Bot ===")
+    LOGGER.info(
+        "Profile=%s max_price=<%.2f max_posts=%d mode=%s min_discount=%.1f min_review_pct=%d min_review_count=%d",
+        s.profile_name,
+        s.max_price,
+        s.max_posts_per_run,
+        s.digest_mode,
+        s.min_discount_percent,
+        s.min_review_percent,
+        s.min_review_count,
+    )
+
+    metrics = RunMetrics()
 
     try:
         stores = fetch_stores()
     except requests.RequestException as e:
-        print(f"⚠️ Failed to fetch store catalog from CheapShark: {e}")
+        LOGGER.warning("Failed to fetch store catalog from CheapShark: %s", e)
         return
 
     filtered_stores = _filter_store_map(stores, s)
     if not filtered_stores:
-        print("No stores matched current allow/exclude filters. Nothing posted.")
+        LOGGER.info("No stores matched current allow/exclude filters. Nothing posted.")
         return
 
     posted = load_posted_ids(s.posted_cache_file)
@@ -130,32 +203,40 @@ def main() -> None:
             store_map=filtered_stores,
         )
     except requests.RequestException as e:
-        print(f"⚠️ Failed to fetch deals from CheapShark: {e}")
+        LOGGER.warning("Failed to fetch deals from CheapShark: %s", e)
         cheapshark_candidates = []
 
     if s.include_steam_direct_specials:
         try:
             steam_direct_candidates = fetch_steam_specials(s.max_price)
         except requests.RequestException as e:
-            print(f"⚠️ Failed to fetch specials from Steam Store API: {e}")
+            LOGGER.warning("Failed to fetch specials from Steam Store API: %s", e)
             steam_direct_candidates = []
     else:
         steam_direct_candidates = []
 
+    metrics.source_counts["cheapshark"] = len(cheapshark_candidates)
+    metrics.source_counts["steam_direct"] = len(steam_direct_candidates)
+
     candidates = cheapshark_candidates + steam_direct_candidates
+    metrics.fetched_total = len(candidates)
     enriched: List[Deal] = []
 
     for d in candidates:
         if d.sale_price >= s.max_price:
+            metrics.filtered_price += 1
             continue
 
         if d.savings_pct < s.min_discount_percent:
+            metrics.filtered_discount += 1
             continue
 
         if any(k in d.title.lower() for k in s.exclude_keywords):
+            metrics.filtered_keyword += 1
             continue
 
         if not d.steam_app_id:
+            metrics.filtered_missing_appid += 1
             continue
 
         cached = steam_cache.get(d.steam_app_id)
@@ -173,16 +254,24 @@ def main() -> None:
                 steam_cache.set(d.steam_app_id, cached)
 
             if not bool(cached.get("is_coop")):
+                metrics.filtered_non_coop += 1
+                continue
+
+            review_pct = cached.get("review_percent")
+            review_count = cached.get("review_count")
+            if not _passes_review_threshold(review_pct, review_count, s.min_review_percent, s.min_review_count):
+                metrics.filtered_reviews += 1
                 continue
 
             d.coop_tags = list(cached.get("coop_tags") or [])
             d.review_summary = cached.get("review_summary")
-            d.review_percent = cached.get("review_percent")
-            d.review_count = cached.get("review_count")
+            d.review_percent = review_pct
+            d.review_count = review_count
             d.reason = _reason_for_deal(d, s.price_sweet_spot)
             enriched.append(d)
         except requests.RequestException as e:
-            print(f"⚠️ Steam metadata check failed for {d.title} (appid={d.steam_app_id}): {e}")
+            metrics.metadata_errors += 1
+            LOGGER.warning("Steam metadata check failed for %s (appid=%s): %s", d.title, d.steam_app_id, e)
 
     steam_cache.save()
 
@@ -194,24 +283,38 @@ def main() -> None:
 
     selected: List[Deal] = []
     seen_appids: Set[str] = set()
+    seen_franchises: Set[str] = set()
     for d in ranked:
         if d.deal_id in posted:
+            metrics.filtered_already_posted += 1
             continue
         if d.steam_app_id and d.steam_app_id in seen_appids:
+            metrics.filtered_duplicate_appid += 1
             continue
+        if s.franchise_dedupe_enabled:
+            fk = _franchise_key(d.title, s.franchise_dedupe_words)
+            if fk and fk in seen_franchises:
+                metrics.filtered_duplicate_franchise += 1
+                continue
+        else:
+            fk = None
 
         selected.append(d)
         if d.steam_app_id:
             seen_appids.add(d.steam_app_id)
+        if fk:
+            seen_franchises.add(fk)
 
         if len(selected) >= s.max_posts_per_run:
             break
 
     if not selected:
-        print("No new co-op deals found. Nothing posted.")
+        LOGGER.info("No new co-op deals found. Nothing posted.")
+        LOGGER.info("Run metrics: %s", metrics)
         return
 
     role_id = s.discord_role_id if (s.ping_role_on_post and s.discord_role_id) else None
+    metrics.posted_count = len(selected)
 
     try:
         post_deals(
@@ -219,20 +322,22 @@ def main() -> None:
             username=s.discord_webhook_username,
             deals=selected,
             embed_color=s.embed_color,
-            message_title=_digest_title(s.digest_mode, s.max_price),
+            message_title=_digest_title(s.digest_mode, s.max_price, s.profile_name),
             role_id_to_ping=role_id,
+            metrics_summary=_build_metrics_summary(metrics),
         )
     except requests.RequestException as e:
-        print(f"⚠️ Failed to post deals to Discord webhook: {e}")
+        LOGGER.warning("Failed to post deals to Discord webhook: %s", e)
         return
 
-    print(f"🚀 Posted {len(selected)} deal(s) to Discord")
+    LOGGER.info("Posted %d deal(s) to Discord", len(selected))
 
     for d in selected:
         posted.add(d.deal_id)
 
     save_posted_ids(s.posted_cache_file, posted)
-    print("💾 Cache updated")
+    LOGGER.info("Cache updated")
+    LOGGER.info("Run metrics: %s", metrics)
 
 
 if __name__ == "__main__":
