@@ -1,4 +1,6 @@
 name: Co-op Deals Bot
+run-name: >-
+  Co-op Deals • ${{ github.event_name == 'workflow_dispatch' && format('{0} / {1}', github.event.inputs.profile_name || 'default', github.event.inputs.digest_mode || 'daily') || 'scheduled run' }}
 
 on:
   schedule:
@@ -23,38 +25,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validate source compiles
+      - name: 🧪 Validate source compiles
         run: |
           python -m compileall bot tests
 
-      - name: Run unit tests
+      - name: ✅ Run unit tests
         run: |
           pytest -q
 
-      - name: Restore posted deals cache
+      - name: ♻️ Restore posted deals cache
         uses: actions/cache@v4
         with:
           path: |
             data/posted_deals.json
             data/steam_coop_cache.json
-          key: coop-deals-posted-cache-v3
+          key: coop-deals-posted-cache-v4
           restore-keys: |
             coop-deals-posted-cache-
 
-      - name: Run bot
+      - name: 📝 Build run context summary
+        run: |
+          {
+            echo "## 🤖 Co-op Deals workflow run"
+            echo
+            echo "| Key | Value |"
+            echo "| --- | ----- |"
+            echo "| Trigger | `${{ github.event_name }}` |"
+            echo "| Profile | `${{ github.event.inputs.profile_name || 'default' }}` |"
+            echo "| Digest mode | `${{ github.event.inputs.digest_mode || 'daily' }}` |"
+            echo "| Ref | `${{ github.ref_name }}` |"
+            echo "| SHA | `${{ github.sha }}` |"
+            echo
+            echo "### Runtime config"
+            echo "- Python: 3.11"
+            echo "- Min discount: 20%"
+            echo "- Min review score/count: 70 / 100"
+            echo "- Franchise dedupe: enabled (2 words)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 🚀 Run bot
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_USERNAME: ${{ secrets.DISCORD_WEBHOOK_USERNAME }}
@@ -78,4 +100,21 @@ jobs:
           # ONLY_STEAM_REDEEMABLE: "true"
           # PRICE_SWEET_SPOT: "5"
         run: |
-          python -m bot.main
+          set -o pipefail
+          python -m bot.main 2>&1 | tee bot-run.log
+
+      - name: 📋 Append bot log highlights
+        if: always()
+        run: |
+          {
+            echo
+            echo "### Bot run highlights"
+            echo
+            echo '```text'
+            if [ -f bot-run.log ]; then
+              grep -E "=== Co-op Deals Bot ===|Profile=|Posted [0-9]+ deal\(s\)|No new co-op deals found|Run metrics:|Failed to" bot-run.log || echo "(No highlight lines matched; see full step logs.)"
+            else
+              echo "bot-run.log not found."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

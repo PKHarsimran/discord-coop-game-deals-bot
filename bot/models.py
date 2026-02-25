@@ -22,6 +22,9 @@ class Deal:
     review_summary: Optional[str] = None
     review_percent: Optional[int] = None
     review_count: Optional[int] = None
+    current_players: Optional[int] = None
+    steamspy_ccu: Optional[int] = None
+    steamspy_owners: Optional[str] = None
     reason: Optional[str] = None
 
     @property
@@ -37,3 +40,9 @@ class Deal:
         if not self.steam_app_id:
             return None
         return f"https://store.steampowered.com/app/{self.steam_app_id}/"
+
+    @property
+    def steamdb_url(self) -> Optional[str]:
+        if not self.steam_app_id:
+            return None
+        return f"https://steamdb.info/app/{self.steam_app_id}/"

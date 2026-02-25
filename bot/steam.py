@@ -9,6 +9,8 @@ from .http_client import get_json
 
 STEAM_APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
 STEAM_APPREVIEWS_URL = "https://store.steampowered.com/appreviews/{appid}"
+STEAM_CURRENT_PLAYERS_URL = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
+STEAMSPY_APPDETAILS_URL = "https://steamspy.com/api.php"
 
 COOP_CATEGORY_KEYWORDS = {
     "co-op",
@@ -84,4 +86,33 @@ def fetch_review_summary(appid: str, timeout: int = 20) -> Tuple[Optional[str], 
         str(text).strip() if text else None,
         int(pct) if isinstance(pct, int) else None,
         int(total) if isinstance(total, int) else None,
+    )
+
+
+def fetch_current_players(appid: str, timeout: int = 20) -> Optional[int]:
+    payload = get_json(
+        STEAM_CURRENT_PLAYERS_URL,
+        params={"appid": str(appid)},
+        timeout=timeout,
+    )
+    response = payload.get("response") if isinstance(payload, dict) else None
+    count = response.get("player_count") if isinstance(response, dict) else None
+    return int(count) if isinstance(count, int) else None
+
+
+def fetch_steamspy_stats(appid: str, timeout: int = 20) -> Tuple[Optional[int], Optional[str]]:
+    payload = get_json(
+        STEAMSPY_APPDETAILS_URL,
+        params={"request": "appdetails", "appid": str(appid)},
+        timeout=timeout,
+    )
+
+    if not isinstance(payload, dict):
+        return None, None
+
+    ccu = payload.get("ccu")
+    owners = payload.get("owners")
+    return (
+        int(ccu) if isinstance(ccu, int) else None,
+        str(owners).strip() if owners else None,
     )
