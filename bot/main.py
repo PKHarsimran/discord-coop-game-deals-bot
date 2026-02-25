@@ -13,7 +13,13 @@ from .cheapshark import fetch_deals, fetch_stores
 from .config import load_settings
 from .discord_webhook import post_deals
 from .models import Deal
-from .steam import SteamCoopCache, fetch_coop_metadata, fetch_review_summary
+from .steam import (
+    SteamCoopCache,
+    fetch_coop_metadata,
+    fetch_current_players,
+    fetch_review_summary,
+    fetch_steamspy_stats,
+)
 from .steam_store import fetch_steam_specials
 
 LOGGER = logging.getLogger("coop_deals_bot")
@@ -135,10 +141,51 @@ def _passes_review_threshold(
     return review_percent >= min_review_percent and review_count >= min_review_count
 
 
+def _fetch_optional_popularity_stats(appid: str) -> tuple[int | None, int | None, str | None]:
+    current_players = None
+    steamspy_ccu = None
+    steamspy_owners = None
+
+    try:
+        current_players = fetch_current_players(appid)
+    except requests.RequestException as e:
+        LOGGER.warning("Steam current players check failed for appid=%s: %s", appid, e)
+
+    try:
+        steamspy_ccu, steamspy_owners = fetch_steamspy_stats(appid)
+    except requests.RequestException as e:
+        LOGGER.warning("SteamSpy stats check failed for appid=%s: %s", appid, e)
+
+    return current_players, steamspy_ccu, steamspy_owners
+
+
 def _build_metrics_summary(metrics: "RunMetrics") -> str:
-    return (
-        f"Fetched: {metrics.fetched_total} | Posted: {metrics.posted_count}"
-        f" | Filtered(non-coop/reviews): {metrics.filtered_non_coop}/{metrics.filtered_reviews}"
+    cheapshark_count = metrics.source_counts.get("cheapshark", 0)
+    steam_direct_count = metrics.source_counts.get("steam_direct", 0)
+
+    return "\n".join(
+        [
+            "📊 Deal run summary",
+            (
+                "• Fetched: "
+                f"{metrics.fetched_total} "
+                f"(CheapShark: {cheapshark_count}, Steam Direct: {steam_direct_count})"
+            ),
+            f"• Posted: {metrics.posted_count}",
+            (
+                "• Filtered: "
+                f"price={metrics.filtered_price}, "
+                f"discount={metrics.filtered_discount}, "
+                f"keywords={metrics.filtered_keyword}, "
+                f"missing_appid={metrics.filtered_missing_appid}, "
+                f"non_coop={metrics.filtered_non_coop}, "
+                f"reviews={metrics.filtered_reviews}, "
+                f"already_posted={metrics.filtered_already_posted}, "
+                f"dup_appid={metrics.filtered_duplicate_appid}, "
+                f"dup_franchise={metrics.filtered_duplicate_franchise}"
+            ),
+            f"• Metadata errors: {metrics.metadata_errors}",
+        ]
     )
 
 
@@ -244,12 +291,16 @@ def main() -> None:
             if cached is None:
                 is_coop, tags = fetch_coop_metadata(d.steam_app_id)
                 review_summary, review_pct, review_count = fetch_review_summary(d.steam_app_id)
+                current_players, steamspy_ccu, steamspy_owners = _fetch_optional_popularity_stats(d.steam_app_id)
                 cached = {
                     "is_coop": is_coop,
                     "coop_tags": tags,
                     "review_summary": review_summary,
                     "review_percent": review_pct,
                     "review_count": review_count,
+                    "current_players": current_players,
+                    "steamspy_ccu": steamspy_ccu,
+                    "steamspy_owners": steamspy_owners,
                 }
                 steam_cache.set(d.steam_app_id, cached)
 
@@ -267,6 +318,9 @@ def main() -> None:
             d.review_summary = cached.get("review_summary")
             d.review_percent = review_pct
             d.review_count = review_count
+            d.current_players = cached.get("current_players")
+            d.steamspy_ccu = cached.get("steamspy_ccu")
+            d.steamspy_owners = cached.get("steamspy_owners")
             d.reason = _reason_for_deal(d, s.price_sweet_spot)
             enriched.append(d)
         except requests.RequestException as e:

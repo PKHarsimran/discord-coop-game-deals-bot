@@ -9,6 +9,10 @@ from .models import Deal
 MAX_DISCORD_CONTENT_CHARS = 2000
 
 
+def _format_number(value: int) -> str:
+    return f"{value:,}"
+
+
 def _reason_line(deal: Deal) -> Optional[str]:
     if deal.reason:
         return f"Why this deal: {deal.reason}"
@@ -34,6 +38,16 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
         else:
             desc_lines.append(f"Steam Reviews: **{deal.review_summary}**")
 
+    steamdb_stats: List[str] = []
+    if deal.current_players is not None:
+        steamdb_stats.append(f"Players now: **{_format_number(deal.current_players)}**")
+    if deal.steamspy_ccu is not None:
+        steamdb_stats.append(f"24h peak(CCU): **{_format_number(deal.steamspy_ccu)}**")
+    if deal.steamspy_owners:
+        steamdb_stats.append(f"Owners est.: **{deal.steamspy_owners}**")
+    if steamdb_stats:
+        desc_lines.append("SteamDB-ish stats: " + " • ".join(steamdb_stats))
+
     reason_line = _reason_line(deal)
     if reason_line:
         desc_lines.append(reason_line)
@@ -41,6 +55,8 @@ def build_embed(deal: Deal, embed_color: int) -> Dict[str, Any]:
     links_value = f"[Buy deal]({deal.deal_url})"
     if steam_url:
         links_value += f" • [Steam]({steam_url})"
+    if deal.steamdb_url:
+        links_value += f" • [SteamDB]({deal.steamdb_url})"
 
     embed: Dict[str, Any] = {
         "title": deal.title[:256],
